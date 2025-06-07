@@ -31,7 +31,12 @@ jobs:
           cp -r public deploy/public
           cp package.json deploy/
           cp -r node_modules deploy/node_modules
-          cp -r .next/standalone deploy/.next/standalone
+          if [ -d ".next/standalone" ]; then
+            cp -r .next/standalone deploy/.next/standalone
+          else
+            echo "❌ .next/standalone not found!"
+            exit 1
+          fi
 
       - name: Create zip file
         run: |
