@@ -30,7 +30,6 @@ jobs:
           cp -r .next deploy/.next
           cp -r public deploy/public
           cp package.json deploy/
-          cp -r node_modules deploy/node_modules
 
       - name: Create zip file
         run: |
