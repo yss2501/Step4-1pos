@@ -24,19 +24,17 @@ jobs:
       - name: Build Next.js app
         run: npm run build
 
-      - name: Prepare deployment package for standalone mode
+      - name: Copy necessary files for deployment
         run: |
-          mkdir -p deploy
-          cp -r .next/standalone/* deploy/
-          if [ -d ".next/static" ]; then
-            mkdir -p deploy/.next
-            cp -r .next/static deploy/.next/static
-          fi
+          mkdir deploy
+          cp -r .next deploy/.next
           cp -r public deploy/public
           cp -r node_modules deploy/node_modules
-          cp package.json deploy/
+          cp -r package.json deploy/
+          cp -r next.config.js deploy/ || true
+          cp -r next.config.ts deploy/ || true
 
-      - name: Create zip file
+      - name: Create deployment zip
         run: |
           cd deploy
           zip -r ../deploy.zip .
