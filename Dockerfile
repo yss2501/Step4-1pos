@@ -1,19 +1,21 @@
-# ベースイメージ：軽量でNode.js入り
+# ベースイメージ（軽量なNode.js環境）
 FROM node:18-alpine
 
-# 作業ディレクトリ作成
+# 作業ディレクトリの作成・移動
 WORKDIR /app
 
-# package.jsonとlockファイルをコピーして依存関係インストール
+# 依存ファイルをコピーしてインストール
 COPY package*.json ./
 RUN npm install
 
-# アプリ全体をコピー
+# アプリケーションファイル全体をコピー
 COPY . .
 
-# Next.js ビルド（output: 'standalone' でOK）
+# ✅ 本番ビルド（これが重要！）
 RUN npm run build
 
-# ポート3000で起動（Next.jsデフォルト）
+# ポート3000を開放（Next.jsデフォルト）
 EXPOSE 3000
+
+# アプリ起動コマンド
 CMD ["npm", "start"]
