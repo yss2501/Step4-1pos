@@ -1,4 +1,4 @@
-name: Deploy Next.js app to Azure App Service
+name: Deploy Next.js App to Azure App Service (ZIP)
 
 on:
   push:
@@ -21,12 +21,26 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Build the app
+      - name: Build Next.js app (standalone)
         run: npm run build
+
+      - name: Prepare deployment package
+        run: |
+          mkdir deploy
+          cp -r .next deploy/.next
+          cp -r public deploy/public
+          cp package.json deploy/
+          cp -r node_modules deploy/node_modules
+          cp -r .next/standalone deploy/.next/standalone
+
+      - name: Create zip file
+        run: |
+          cd deploy
+          zip -r ../deploy.zip .
 
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v2
         with:
-          app-name: app-step4-45  # ← Azure App Service の名前
+          app-name: app-step4-45
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }}
-          package: .
+          package: deploy.zip
