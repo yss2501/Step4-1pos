@@ -26,9 +26,12 @@ jobs:
 
       - name: Prepare deployment package for standalone mode
         run: |
-          mkdir deploy
+          mkdir -p deploy
           cp -r .next/standalone/* deploy/
-          cp -r .next/static deploy/.next/static
+          if [ -d ".next/static" ]; then
+            mkdir -p deploy/.next
+            cp -r .next/static deploy/.next/static
+          fi
           cp -r public deploy/public
           cp -r node_modules deploy/node_modules
           cp package.json deploy/
