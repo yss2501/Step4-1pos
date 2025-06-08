@@ -1,178 +1,251 @@
-import { useState } from "react";
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+
+// APIエンドポイントを環境変数から取得
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || "http://localhost:8000";
 
 type Product = {
-  code: string;
-  name: string;
-  price: number;
-  prd_id: number;
-};
-
-type PurchaseItem = {
-  prd_id: number;
+  prd_id: string;
   prd_code: string;
   prd_name: string;
   prd_price: number;
 };
 
-export default function POS() {
-  const [code, setCode] = useState("");
-  const [product, setProduct] = useState<Product | null>(null);
-  const [cart, setCart] = useState<PurchaseItem[]>([]);
-  const [popupAmount, setPopupAmount] = useState<number | null>(null);
+type AggregatedProduct = Product & { quantity: number };
 
-  const handleReadProduct = async () => {
-    try {
-      const res = await fetch(`http://localhost:8000/products/${code}`);
-      if (!res.ok) throw new Error("商品が見つかりません");
-      const data = await res.json();
-      setProduct(data);
-    } catch (err) {
-      alert("商品が見つかりませんでした");
-      setProduct(null);
+export default function POSPage() {
+  const router = useRouter();
+  const [items, setItems] = useState<Product[]>([]);
+
+  useEffect(() => {
+    const storedItems = sessionStorage.getItem("scannedItems");
+    if (storedItems) {
+      try {
+        const parsed = JSON.parse(storedItems);
+        if (Array.isArray(parsed)) {
+          setItems(parsed);
+        }
+      } catch (e) {
+        console.error("保存された商品情報の解析エラー", e);
+      }
     }
-  };
+  }, []);
 
-  const handleAddToCart = () => {
-    if (product) {
-      setCart([...cart, {
-        prd_id: product.prd_id,
-        prd_code: product.code,
-        prd_name: product.name,
-        prd_price: product.price,
-      }]);
-      setProduct(null);
-      setCode("");
+  const aggregatedItems: AggregatedProduct[] = [];
+  const map = new Map<string, AggregatedProduct>();
+  items.forEach((item) => {
+    const key = item.prd_id;
+    if (map.has(key)) {
+      map.get(key)!.quantity += 1;
+    } else {
+      map.set(key, { ...item, quantity: 1 });
+    }
+  });
+  aggregatedItems.push(...map.values());
+
+  const total = aggregatedItems.reduce(
+    (sum, item) => sum + item.prd_price * item.quantity,
+    0
+  );
+
+  const removeItem = (prd_id: string) => {
+    const updated = [...items];
+    const index = updated.findIndex((i) => i.prd_id === prd_id);
+    if (index !== -1) {
+      updated.splice(index, 1);
+      setItems(updated);
+      sessionStorage.setItem("scannedItems", JSON.stringify(updated));
     }
   };
 
   const handlePurchase = async () => {
-    const payload = {
-      emp_cd: "E0001",
-      store_cd: "00001",
-      pos_no: "001",
-      items: cart
-    };
+    if (items.length === 0) {
+      alert("商品がスキャンされていません");
+      return;
+    }
+
     try {
-      const res = await fetch("http://localhost:8000/purchase", {
+      const payload = {
+        emp_cd: "E0001",
+        store_cd: "S001",
+        pos_no: "POS01",
+        items: items.map((item) => ({
+          prd_id: item.prd_id,
+          prd_code: item.prd_code,
+          prd_name: item.prd_name,
+          prd_price: item.prd_price,
+        })),
+      };
+
+      const res = await fetch(`${API_BASE}/purchase`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
       });
-      const result = await res.json();
-      if (res.ok) {
-        setPopupAmount(result.total_amount);
-      } else {
-        alert(`購入失敗: ${result.detail || JSON.stringify(result)}`);
-      }
-    } catch (err: any) {
-      alert("サーバー接続エラー: " + err.message);
+
+      if (!res.ok) throw new Error("購入処理に失敗しました");
+
+      const data = await res.json();
+      alert(
+        `ご購入ありがとうございます。\n\n税抜価格: ¥${data.total_amount_ex_tax}\n合計金額（税込）: ¥${data.total_amount}`
+      );
+
+      sessionStorage.removeItem("scannedItems");
+      setItems([]);
+    } catch (e) {
+      alert("エラーが発生しました: " + e);
     }
-  };
-
-  const groupedCart = Object.values(cart.reduce((acc, item) => {
-    if (!acc[item.prd_code]) {
-      acc[item.prd_code] = { ...item, count: 1 };
-    } else {
-      acc[item.prd_code].count += 1;
-    }
-    return acc;
-  }, {} as Record<string, PurchaseItem & { count: number }>));
-
-  const totalAmount = groupedCart.reduce(
-    (sum, item) => sum + item.prd_price * item.count,
-    0
-  );
-
-  const handlePopupClose = () => {
-    setCart([]);
-    setProduct(null);
-    setCode("");
-    setPopupAmount(null);
   };
 
   return (
-    <div style={{ maxWidth: 600, margin: "0 auto", padding: 20, position: "relative" }}>
-      <h1>POS機能Lv1-Demo</h1>
-      <input
-        type="text"
-        placeholder="商品コードを入力"
-        value={code}
-        onChange={(e) => setCode(e.target.value)}
-        style={{ width: "35%", marginBottom: 8 }}
-      />
-      <button onClick={handleReadProduct}>商品コード 読み込み</button>
-
-      {product && (
-        <div style={{ marginTop: 16 }}>
-          <p>商品名: {product.name}</p>
-          <p>単価: {product.price}円</p>
-          <button onClick={handleAddToCart}>追加</button>
-        </div>
-      )}
-
-      <div style={{ marginTop: 24 }}>
-        <h2>購入リスト</h2>
-        <div
+    <main
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100vh",
+        background: "linear-gradient(to bottom, #d97706, #fcd34d)",
+      }}
+    >
+      <div style={{ padding: "1rem 0", textAlign: "center" }}>
+        <button
+          onClick={() => router.push("/scan")}
           style={{
-            border: "1px solid #ccc",
-            borderRadius: "8px",
-            padding: "12px",
-            minHeight: "60px",
-            boxShadow: "0 2px 5px rgba(0,0,0,0.1)",
-            backgroundColor: "#f9f9f9",
-            display: "flex",
-            flexDirection: "column",
-            gap: "12px"
+            backgroundColor: "#f59e0b",
+            border: "none",
+            padding: "1rem 2.5rem",
+            borderRadius: "9999px",
+            display: "inline-flex",
+            alignItems: "center",
+            justifyContent: "center",
+            cursor: "pointer",
           }}
         >
-          {groupedCart.length === 0 ? (
-            <p style={{ color: "#666", margin: 0 }}>
-              （購入リストは、空です）
-            </p>
-          ) : (
-            groupedCart.map((item, index) => (
-              <div key={index}>
-                <div style={{ fontWeight: "bold", fontSize: "16px" }}>{item.prd_name}</div>
-                <div style={{ fontSize: "14px" }}>
-                  単価：{item.prd_price}円 × {item.count}個 ＝ 合計 {item.prd_price * item.count}円
-                </div>
-              </div>
-            ))
-          )}
-        </div>
+          <img
+            src="/pic/29027.png"
+            alt="スキャンアイコン"
+            style={{ height: "100px", width: "auto" }}
+          />
+        </button>
+      </div>
 
-        <div style={{ marginTop: 16 }}>
-          <button onClick={handlePurchase} disabled={cart.length === 0}>
-            購入する
-          </button>
-          {cart.length > 0 && (
-            <span style={{ marginLeft: 16, fontWeight: "bold", fontSize: "16px" }}>
-              合計：{totalAmount}円
-            </span>
+      <div style={{ flex: 1, padding: "1.5rem", overflowY: "auto" }}>
+        <h2 style={{ fontWeight: "bold", fontSize: "1rem", color: "#1f2937", marginBottom: "0.5rem" }}>
+          購入リスト
+        </h2>
+        <div
+          style={{
+            backgroundColor: "white",
+            borderRadius: "0.5rem",
+            padding: "0.5rem",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.1)",
+          }}
+        >
+          {aggregatedItems.length === 0 ? (
+            <div style={{ color: "#9ca3af" }}>商品が登録されていません</div>
+          ) : (
+            <table style={{ width: "100%", fontSize: "0.9rem" }}>
+              <thead>
+                <tr style={{ textAlign: "left", borderBottom: "1px solid #ccc" }}>
+                  <th>商品名</th>
+                  <th>数量</th>
+                  <th>単価</th>
+                  <th>小計</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {aggregatedItems.map((item, index) => (
+                  <tr key={index} style={{ borderBottom: "1px solid #eee" }}>
+                    <td>{item.prd_name}</td>
+                    <td>x{item.quantity}</td>
+                    <td>¥{item.prd_price}</td>
+                    <td>¥{item.prd_price * item.quantity}</td>
+                    <td>
+                      <button
+                        onClick={() => removeItem(item.prd_id)}
+                        style={{
+                          backgroundColor: "red",
+                          color: "white",
+                          border: "none",
+                          padding: "0.3rem 0.6rem",
+                          borderRadius: "0.3rem",
+                          fontSize: "0.8rem",
+                          cursor: "pointer",
+                        }}
+                      >
+                        削除
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr style={{ fontWeight: "bold" }}>
+                  <td colSpan={3} style={{ textAlign: "right" }}>合計金額</td>
+                  <td colSpan={2}>¥{total}</td>
+                </tr>
+              </tfoot>
+            </table>
           )}
         </div>
       </div>
 
-      {popupAmount !== null && (
-        <div style={{
-          position: "fixed",
-          top: 0, left: 0, right: 0, bottom: 0,
-          backgroundColor: "rgba(0,0,0,0.4)",
-          display: "flex", alignItems: "center", justifyContent: "center"
-        }}>
-          <div style={{
-            backgroundColor: "white",
-            padding: 30,
-            borderRadius: 8,
-            textAlign: "center",
-            boxShadow: "0 2px 10px rgba(0,0,0,0.2)"
-          }}>
-            <h2>購入完了！</h2>
-            <p>合計金額（税込）：<strong>{popupAmount}円</strong></p>
-            <button onClick={handlePopupClose}>OK</button>
-          </div>
+      <div style={{ backgroundColor: "white", padding: "1rem", borderTop: "1px solid #e5e7eb" }}>
+        <div style={{ textAlign: "center", marginBottom: "0.75rem" }}>
+          <button
+            onClick={handlePurchase}
+            style={{
+              backgroundColor: "#f59e0b",
+              color: "white",
+              fontWeight: "bold",
+              fontSize: "1.125rem",
+              padding: "0.75rem 3rem",
+              borderRadius: "9999px",
+              border: "none",
+            }}
+          >
+            購入
+          </button>
         </div>
-      )}
-    </div>
+
+        <div style={{ display: "flex", justifyContent: "space-around", alignItems: "center" }}>
+          <button
+            onClick={() => {
+              sessionStorage.removeItem("scannedItems");
+              setItems([]);
+            }}
+            style={{
+              backgroundColor: "#d1d5db",
+              color: "black",
+              fontWeight: "bold",
+              fontSize: "1.125rem",
+              padding: "0.5rem 1.5rem",
+              borderRadius: "9999px",
+              border: "none",
+            }}
+          >
+            Clear
+          </button>
+          <button
+            onClick={() => router.push("/")}
+            style={{
+              backgroundColor: "black",
+              color: "white",
+              fontWeight: "bold",
+              fontSize: "1.125rem",
+              padding: "0.5rem 1.5rem",
+              borderRadius: "9999px",
+              border: "none",
+            }}
+          >
+            終了
+          </button>
+        </div>
+      </div>
+    </main>
   );
 }
