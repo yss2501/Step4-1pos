@@ -20,9 +20,9 @@ export default function Home() {
   };
 
   useEffect(() => {
-    updateTime(); // 初期化
-    const timer = setInterval(updateTime, 60 * 1000); // 1分ごとに更新
-    return () => clearInterval(timer); // クリーンアップ
+    updateTime();
+    const timer = setInterval(updateTime, 60 * 1000);
+    return () => clearInterval(timer);
   }, []);
 
   const handleStart = () => {
